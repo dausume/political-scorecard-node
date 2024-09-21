@@ -1,0 +1,6 @@
+[submodule "political-scorecard-backend"]
+	path = political-scorecard-backend
+	url = https://github.com/dausume/political-scorecard-backend.git
+[submodule "political-scorecard-frontend"]
+	path = political-scorecard-frontend
+	url = https://github.com/dausume/political-scorecard-frontend.git
