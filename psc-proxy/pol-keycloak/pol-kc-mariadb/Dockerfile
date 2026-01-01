@@ -1,0 +1,1 @@
+FROM mariadb:11.5.1-ubi-rc

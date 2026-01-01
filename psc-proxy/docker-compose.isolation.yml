@@ -1,0 +1,48 @@
+services:
+  keycloak:
+    build:
+      context: ./pol-keycloak
+      dockerfile: Dockerfile.pol-kc
+    container_name: pol-keycloak
+    ports:
+      - "8080:8080" # HTTP port
+      - "8443:8443" # HTTPS port
+      - "9990:9990"  # Management port
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+      - KC_METRICS_ENABLED=true
+      - KC_HOSTNAME_DEBUG=true
+      - KC_PROXY=passthrough
+      - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=false
+      # Commented out - using config file instead (keycloak-isolated.conf)
+      # - KC_HOSTNAME_STRICT=false
+      - PROXY_ADDRESS_FORWARDING=true
+      # Commented out - using config file instead (keycloak-isolated.conf)
+      # - KC_HTTP_PORT=8080
+      # - KC_HTTPS_PORT=8443
+      # Certificate paths - using config file instead (keycloak-isolated.conf: /opt/certs/)
+      # - KC_HTTPS_CERTIFICATE_FILE=/opt/certs/pol-kc.crt
+      # - KC_HTTPS_CERTIFICATE_KEY_FILE=/opt/certs/pol-kc.key
+    depends_on:
+      - pol-kc-mariadb
+    entrypoint: ["/opt/startup_shells/kc_entrypoint.sh"]
+
+  pol-kc-mariadb:
+    build:
+      context: ./pol-keycloak/pol-kc-mariadb
+      dockerfile: Dockerfile
+    container_name: pol-kc-mariadb
+    restart: always
+    ports:
+      - "3443:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: keycloak
+      MYSQL_USER: kc
+      MYSQL_PASSWORD: kcpassword
+    volumes:
+      - kc-mariadb-data:/var/lib/mysql
+
+volumes:
+  kc-mariadb-data:

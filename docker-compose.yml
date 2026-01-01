@@ -1,0 +1,151 @@
+services:
+  # Frontend - Angular Application
+  political-scorecard-frontend:
+    build:
+      context: ./political-scorecard-frontend
+      dockerfile: Dockerfile
+    container_name: psc-frontend
+    networks:
+      - psc-network
+    volumes:
+      - ./political-scorecard-frontend:/app
+      - /app/node_modules
+    ports:
+      - "4200:4200"
+    # Environment variables moved to .env file
+    env_file:
+      - ./political-scorecard-frontend/.env
+    # environment:
+    #   - NODE_ENV=dev
+    command: npm run start
+    depends_on:
+      - political-scorecard-backend
+
+  # Backend - Spring Boot Application
+  political-scorecard-backend:
+    build:
+      context: ./political-scorecard-backend
+      dockerfile: Dockerfile.suite
+    container_name: psc-backend
+    ports:
+      - "8580:8080"
+    networks:
+      - psc-network
+    # Environment variables moved to application.yml (default profile set to 'dev')
+    # environment:
+    #   - SPRING_PROFILES_ACTIVE=dev
+    volumes:
+      - ./political-scorecard-backend:/app
+    command: ./startup_shell/startup_shell.sh
+    depends_on:
+      - psc-mariadb
+      - psc-redis
+
+  # Backend Database - MariaDB
+  psc-mariadb:
+    image: mariadb:latest
+    container_name: psc-mariadb
+    # Environment variables moved to mariadb.env file
+    env_file:
+      - ./political-scorecard-backend/mariadb/mariadb.env
+    # environment:
+    #   - MARIADB_ROOT_PASSWORD=root_password
+    # We set the political-scorecard-backend to use the base SQL database to create the context and location databases and all others.
+    # Therefore, no need to create a default database here.
+    # The user access for the server is set in the init.sql file which is mounted to the container via a volume.
+    ports:
+      - "3800:3306"
+    networks:
+      - psc-network
+    volumes:
+      - psc_suite_mariadb_data:/var/lib/mysql
+      - ./political-scorecard-backend/mariadb/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # Backend Cache - Redis
+  psc-redis:
+    build: ./political-scorecard-backend/redis
+    container_name: psc-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - psc_redis_data:/data
+    networks:
+      - psc-network
+
+  # Keycloak - Authentication Server
+  pol-keycloak:
+    build:
+      context: ./psc-proxy/pol-keycloak
+      dockerfile: Dockerfile.pol-kc
+    container_name: pol-keycloak
+    ports:
+      - "8080:8080" # HTTP port
+      - "8443:8443" # HTTPS port
+      - "9990:9990"  # Management port
+    networks:
+      - psc-network
+    # Admin credentials must remain as env vars for initial setup
+    env_file:
+      - ./psc-proxy/pol-keycloak/keycloak-admin.env
+    # Most environment variables moved to keycloak-suite.conf
+    # environment:
+    #   - KEYCLOAK_ADMIN=admin
+    #   - KEYCLOAK_ADMIN_PASSWORD=admin
+    #   - KC_METRICS_ENABLED=true
+    #   - KC_HOSTNAME_DEBUG=true
+    #   - KC_PROXY=passthrough
+    #   - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=false
+    #   - PROXY_ADDRESS_FORWARDING=true
+    volumes:
+      # Mount suite-specific configuration file
+      - ./psc-proxy/pol-keycloak/environments/keycloak-suite.conf:/opt/keycloak/conf/keycloak.conf
+    depends_on:
+      - pol-kc-mariadb
+    entrypoint: ["/opt/startup_shells/kc_entrypoint.sh"]
+
+  # Keycloak Database - MariaDB
+  pol-kc-mariadb:
+    build:
+      context: ./psc-proxy/pol-keycloak/pol-kc-mariadb
+      dockerfile: Dockerfile
+    container_name: pol-kc-mariadb
+    restart: always
+    ports:
+      - "3443:3306"
+    networks:
+      - psc-network
+    # Environment variables moved to mariadb.env file
+    env_file:
+      - ./psc-proxy/pol-keycloak/pol-kc-mariadb/mariadb.env
+    # environment:
+    #   MYSQL_ROOT_PASSWORD: rootpassword
+    #   MYSQL_DATABASE: keycloak
+    #   MYSQL_USER: kc
+    #   MYSQL_PASSWORD: kcpassword
+    volumes:
+      - kc_mariadb_data:/var/lib/mysql
+
+  # Nginx Reverse Proxy
+  psc-proxy:
+    build:
+      context: ./psc-proxy
+      dockerfile: Dockerfile.psc
+    container_name: psc-proxy
+    ports:
+      - "80:80"     # HTTP
+      - "443:443"   # HTTPS
+    networks:
+      - psc-network
+    depends_on:
+      - political-scorecard-frontend
+      - political-scorecard-backend
+      - pol-keycloak
+
+volumes:
+  psc_suite_mariadb_data:
+  psc_redis_data:
+  kc_mariadb_data:
+
+networks:
+  psc-network:
+    driver: bridge

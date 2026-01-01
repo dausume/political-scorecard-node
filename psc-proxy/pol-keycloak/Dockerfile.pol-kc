@@ -1,0 +1,65 @@
+# Stage 1: Build stage (Installs tools)
+FROM registry.access.redhat.com/ubi9/ubi:latest AS builder
+
+# Create a temporary root directory to hold the installed tools
+RUN mkdir -p /mnt/rootfs
+
+# Use dnf to install curl and jq into the temporary directory
+# This ensures all dependencies are captured for the final image
+RUN dnf install --installroot /mnt/rootfs jq curl \
+    --releasever 9 --setopt install_weak_deps=false --nodocs -y \
+    && dnf --installroot /mnt/rootfs clean all
+
+# Stage 2: Final stage (Keycloak with realm import capabilities)
+FROM quay.io/keycloak/keycloak:26.2.0
+
+# Copy the tools from the builder stage into the final image
+COPY --from=builder /mnt/rootfs /
+
+COPY ./startup_shells/kc.sh /opt/startup_shells/kc.sh
+COPY ./startup_shells/kc_entrypoint.sh /opt/startup_shells/kc_entrypoint.sh
+COPY ./startup_shells/load_realms.sh /opt/startup_shells/load_realms.sh
+
+# Save the current GID and UID of the keycloak user
+RUN echo "User GID: $(id -u)" && \
+    echo "User UID: $(id -g)" && \
+    export KEYCLOAK_USER_ID=$(id -u) && \
+    export KEYCLOAK_GROUP_ID=$(id -g) && \
+    echo "Exported KEYCLOAK_USER_ID: $KEYCLOAK_USER_ID" && \
+    echo "Exported KEYCLOAK_GROUP_ID: $KEYCLOAK_GROUP_ID"
+
+# Switch to root user to modify file permissions
+USER root
+
+# Note : $KEYCLOAK_USER_ID:$KEYCLOAK_GROUP_ID is always 1000:0 -> using variables will not work because
+# the ENV variables are not persisted between RUN commands in Dockerfile.
+
+# Give user ownership of the startup shell scripts
+RUN chown -R 1000:0 /opt/startup_shells/*.sh
+
+# Grant the user sufficient permissions to execute the scripts
+RUN chmod -R u+x /opt/startup_shells/*.sh
+
+COPY ./realm-imports /opt/realm-imports
+
+# Copy over the certs and keys needed for mTLS
+COPY ./certs/pol-kc.crt /opt/certs/pol-kc.crt
+COPY ./certs/pol-kc.key /opt/certs/pol-kc.key
+
+# Give user ownership of the certs and ensure they're readable
+RUN chown -R 1000:0 /opt/certs && \
+    chmod 600 /opt/certs/pol-kc.key && \
+    chmod 644 /opt/certs/pol-kc.crt
+
+COPY ./environments/keycloak-isolated.conf /opt/keycloak/conf/keycloak.conf
+
+# Grant permissions to the binaries for curl and jq so they can be used and then removed later by the keycloak user
+RUN chmod +x /usr/bin/curl && \
+    chmod +x /usr/bin/jq
+
+RUN chown -R 1000:0 /usr/bin/curl /usr/bin/jq
+
+# Switch back to the keycloak user
+USER 1000
+
+ENTRYPOINT ["/opt/startup_shells/kc_entrypoint.sh"]
