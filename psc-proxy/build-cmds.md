@@ -1,1 +1,0 @@
-sudo docker compose -f docker-compose.isolation.yml up --build

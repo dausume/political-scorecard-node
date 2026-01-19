@@ -1,10 +1,85 @@
+# ==============================================================================
+# POLITICAL SCORECARD - STANDALONE DOCKER COMPOSE
+# ==============================================================================
+#
+# IMPORTANT: Choose ONE mode to run - do NOT mix:
+#   - STANDALONE MODE: Run from political-scorecard-node/ using THIS file
+#   - SUITE MODE: Run from polari-suite/ using the parent docker-compose.yml
+#
+# Running both will cause container name conflicts!
+#
+# This file runs PSC independently with its own proxy, Keycloak, and databases.
+# For running PSC alongside PRF, use the suite-level docker-compose instead.
+#
+# ==============================================================================
+# PORTS
+# ==============================================================================
+#   - Frontend HTTP:     localhost:4200
+#   - Backend HTTP:      localhost:8580
+#   - Keycloak:          localhost:8080 (HTTP), localhost:8443 (HTTPS)
+#   - PSC Proxy HTTPS:   localhost:2053 (frontend), localhost:2083 (backend)
+#   - MariaDB:           localhost:3306
+#   - Redis:             localhost:6379
+#
+# ==============================================================================
+# DATABASE
+# ==============================================================================
+# Uses consolidated MariaDB with separate databases:
+#   - Database: keycloak (user: kc)
+#   - Databases: psc, psc_scoring_db, psc_location_db (user: psc-scorecard-server)
+# ==============================================================================
+
 services:
+  # ============================================
+  # SHARED DATABASE SERVICES
+  # ============================================
+
+  # Consolidated MariaDB - serves both Keycloak and PSC
+  pol-mariadb:
+    build:
+      context: ../pol-mariadb
+      dockerfile: Dockerfile
+    container_name: pol-mariadb
+    image: pol-mariadb:latest
+    restart: always
+    ports:
+      - "3306:3306"
+    networks:
+      - psc-network
+    env_file:
+      - ../pol-mariadb/mariadb.env
+    volumes:
+      - pol_mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Backend Cache - Redis
+  psc-redis:
+    build: ./political-scorecard-backend/redis
+    container_name: psc-redis
+    image: psc-redis:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - psc_redis_data:/data
+    networks:
+      - psc-network
+
+  # ============================================
+  # APPLICATION SERVICES
+  # ============================================
+
   # Frontend - Angular Application
   political-scorecard-frontend:
     build:
       context: ./political-scorecard-frontend
       dockerfile: Dockerfile
     container_name: psc-frontend
+    image: psc-frontend:latest
     networks:
       - psc-network
     volumes:
@@ -12,11 +87,8 @@ services:
       - /app/node_modules
     ports:
       - "4200:4200"
-    # Environment variables moved to .env file
     env_file:
       - ./political-scorecard-frontend/.env
-    # environment:
-    #   - NODE_ENV=dev
     command: npm run start
     depends_on:
       - political-scorecard-backend
@@ -27,113 +99,69 @@ services:
       context: ./political-scorecard-backend
       dockerfile: Dockerfile.suite
     container_name: psc-backend
+    image: psc-backend:latest
     ports:
       - "8580:8080"
     networks:
       - psc-network
-    # Environment variables moved to application.yml (default profile set to 'dev')
-    # environment:
-    #   - SPRING_PROFILES_ACTIVE=dev
+    environment:
+      # Database connection to consolidated MariaDB
+      - SPRING_DATASOURCE_URL=jdbc:mariadb://pol-mariadb:3306/psc
+      - SPRING_DATASOURCE_USERNAME=psc-scorecard-server
+      - SPRING_DATASOURCE_PASSWORD=pscpassword
     volumes:
       - ./political-scorecard-backend:/app
     command: ./startup_shell/startup_shell.sh
     depends_on:
-      - psc-mariadb
-      - psc-redis
+      pol-mariadb:
+        condition: service_healthy
+      psc-redis:
+        condition: service_started
 
-  # Backend Database - MariaDB
-  psc-mariadb:
-    image: mariadb:latest
-    container_name: psc-mariadb
-    # Environment variables moved to mariadb.env file
-    env_file:
-      - ./political-scorecard-backend/mariadb/mariadb.env
-    # environment:
-    #   - MARIADB_ROOT_PASSWORD=root_password
-    # We set the political-scorecard-backend to use the base SQL database to create the context and location databases and all others.
-    # Therefore, no need to create a default database here.
-    # The user access for the server is set in the init.sql file which is mounted to the container via a volume.
-    ports:
-      - "3800:3306"
-    networks:
-      - psc-network
-    volumes:
-      - psc_suite_mariadb_data:/var/lib/mysql
-      - ./political-scorecard-backend/mariadb/init.sql:/docker-entrypoint-initdb.d/init.sql
-
-  # Backend Cache - Redis
-  psc-redis:
-    build: ./political-scorecard-backend/redis
-    container_name: psc-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - psc_redis_data:/data
-    networks:
-      - psc-network
+  # ============================================
+  # AUTHENTICATION SERVICES
+  # ============================================
 
   # Keycloak - Authentication Server
   pol-keycloak:
     build:
-      context: ./psc-proxy/pol-keycloak
+      context: ../pol-keycloak
       dockerfile: Dockerfile.pol-kc
     container_name: pol-keycloak
+    image: pol-keycloak:latest
     ports:
-      - "8080:8080" # HTTP port
-      - "8443:8443" # HTTPS port
-      - "9990:9990"  # Management port
+      - "8080:8080"   # HTTP port
+      - "8443:8443"   # HTTPS port
+      - "9990:9990"   # Management port
     networks:
       - psc-network
-    # Admin credentials must remain as env vars for initial setup
     env_file:
-      - ./psc-proxy/pol-keycloak/keycloak-admin.env
-    # Most environment variables moved to keycloak-suite.conf
-    # environment:
-    #   - KEYCLOAK_ADMIN=admin
-    #   - KEYCLOAK_ADMIN_PASSWORD=admin
-    #   - KC_METRICS_ENABLED=true
-    #   - KC_HOSTNAME_DEBUG=true
-    #   - KC_PROXY=passthrough
-    #   - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=false
-    #   - PROXY_ADDRESS_FORWARDING=true
+      - ../pol-keycloak/keycloak-admin.env
     volumes:
-      # Mount suite-specific configuration file
-      - ./psc-proxy/pol-keycloak/environments/keycloak-suite.conf:/opt/keycloak/conf/keycloak.conf
+      - ../pol-keycloak/environments/keycloak-suite.conf:/opt/keycloak/conf/keycloak.conf
     depends_on:
-      - pol-kc-mariadb
+      pol-mariadb:
+        condition: service_healthy
     entrypoint: ["/opt/startup_shells/kc_entrypoint.sh"]
 
-  # Keycloak Database - MariaDB
-  pol-kc-mariadb:
-    build:
-      context: ./psc-proxy/pol-keycloak/pol-kc-mariadb
-      dockerfile: Dockerfile
-    container_name: pol-kc-mariadb
-    restart: always
-    ports:
-      - "3443:3306"
-    networks:
-      - psc-network
-    # Environment variables moved to mariadb.env file
-    env_file:
-      - ./psc-proxy/pol-keycloak/pol-kc-mariadb/mariadb.env
-    # environment:
-    #   MYSQL_ROOT_PASSWORD: rootpassword
-    #   MYSQL_DATABASE: keycloak
-    #   MYSQL_USER: kc
-    #   MYSQL_PASSWORD: kcpassword
-    volumes:
-      - kc_mariadb_data:/var/lib/mysql
+  # ============================================
+  # PROXY SERVICES
+  # ============================================
 
   # Nginx Reverse Proxy
   psc-proxy:
     build:
       context: ./psc-proxy
-      dockerfile: Dockerfile.psc
+      dockerfile: Dockerfile
+      args:
+        NGINX_CONF: nginx.dev.conf
     container_name: psc-proxy
+    image: psc-proxy:latest
     ports:
-      - "80:80"     # HTTP
-      - "443:443"   # HTTPS
+      - "80:80"       # HTTP (prod)
+      - "443:443"     # HTTPS (prod)
+      - "2053:2053"   # HTTPS Frontend (dev - Cloudflare-compatible)
+      - "2083:2083"   # HTTPS Backend API (dev - Cloudflare-compatible)
     networks:
       - psc-network
     depends_on:
@@ -142,9 +170,8 @@ services:
       - pol-keycloak
 
 volumes:
-  psc_suite_mariadb_data:
+  pol_mariadb_data:
   psc_redis_data:
-  kc_mariadb_data:
 
 networks:
   psc-network:

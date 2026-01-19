@@ -1,2 +1,15 @@
+# ==============================================================================
+# SSL/TLS CERTIFICATES AND KEYS
+# ==============================================================================
+# SECURITY: Never commit certificates or private keys to version control
 *.crt
 *.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.der
+# Certificate directories
+**/certs/
+**/ssl/
+**/certificates/
