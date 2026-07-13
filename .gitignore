@@ -13,3 +13,6 @@
 **/certs/
 **/ssl/
 **/certificates/
+# Claude Code local files (settings, memory) — keep private
+.claude/
+CLAUDE.local.md
