@@ -87,6 +87,12 @@ services:
       - /app/node_modules
     ports:
       - "4200:4200"
+    # Run as the HOST user so files written through the source bind mount
+    # (.angular/ cache etc.) stay host-owned instead of root-owned. HOME gives
+    # the mapped user a writable npm/ng home inside the container.
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - HOME=/tmp/npmhome
     env_file:
       - ./political-scorecard-frontend/.env
     command: npm run start
@@ -109,9 +115,14 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:mariadb://pol-mariadb:3306/psc
       - SPRING_DATASOURCE_USERNAME=psc-scorecard-server
       - SPRING_DATASOURCE_PASSWORD=pscpassword
+      - HOME=/tmp/mvnhome   # writable Maven home for the non-root mapped user
     volumes:
       - ./political-scorecard-backend:/app
-    command: ./startup_shell/startup_shell.sh
+    # Run as the HOST user so Maven's target/ lands host-owned through the
+    # bind mount — as root it left root-owned target/ that broke host-native
+    # builds with "Permission denied".
+    user: "${UID:-1000}:${GID:-1000}"
+    command: ./startup_shell/dev_startup_shell.sh
     depends_on:
       pol-mariadb:
         condition: service_healthy
