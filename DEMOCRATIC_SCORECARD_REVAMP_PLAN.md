@@ -1052,3 +1052,234 @@ that submits through `/api/policy-votes/submit` MUST delete the resulting `Polic
 afterward (`DELETE /PolicyVote` with `targetInstance: {"id": "<row id>"}`) — never leave
 one live the way a ScoreAssertion test row can safely be left, since there's no
 'asserted'-vs-'confirmed' buffer protecting the reference dataset.
+
+## Policy drafts + venue-mismatch analysis (Dustin 2026-07-16, built via fork agents — wiring/verification stamps to follow)
+
+Two new Polari-side mechanisms (scoring/policy_drafts.py +
+scoring/venue_patterns.py), extending — never modifying — the
+existing assertion/concept machinery:
+
+1. **Policy drafts are scoreable**: PolicyDraft rows with a
+   validated lifecycle (draft → introduced → in-committee → passed →
+   enacted / failed / withdrawn, append-only history) each back a
+   ScoreSubject (kind 'policy-draft') so ScoreAssertions and
+   ScoreConcepts bind to DEVELOPING policies with zero changes to the
+   scr-6 machinery; enactment links the draft to the real policy
+   subject and draft-era scores stay queryable from it.
+2. **Venue-mismatch patterns** ("devious strategies"): where/how an
+   issue was addressed vs where it should be — VenueActionRecord rows
+   (issue × venue × action × actor × fiscal period, evidence URLs)
+   interpreted against an EDITABLE, votable VenueMismatchPattern
+   catalog. Seeded with Dustin's two: policy-via-budget-rider
+   (legislating through appropriations with no enacted statute) and
+   suppression-by-defunding (ballot initiative enacted, then starved
+   across consecutive budget cycles). Detection produces
+   evidence-bearing findings ("matches the <pattern> sequence" —
+   never an accusation; the legitimate statute-then-budget sequence
+   is pinned as a non-finding), and file_pattern_assertion lands a
+   finding as a REAL 'asserted' ScoreAssertion against the implicated
+   actor — the validity-vote machinery adjudicates, never the
+   detector.
+
+## Credibility votes, PolicyIntent, DataGatheringSolutions, Term Competition (Dustin 2026-07-16 late — fork builds in flight, wiring stamps to follow)
+
+1. **Assertion credibility voting**: groups AND individuals vote on
+   an assertion's credibility — group stances count once as a unit
+   (member-cast, group-attributed), a weighted credibility READING
+   parallel to (never replacing) the scr-6 validity lifecycle,
+   bounded below certainty like sourcing credibility.
+2. **PolicyIntent**: drafters THEMSELVES may set intent on their
+   drafts (opt-in personal participation; non-drafters refused) —
+   append-only supersede chain; intents feed the scr-5 abstraction
+   matcher to suggest term/concept bindings for eventual scoring.
+3. **DataGatheringSolutions**: judicial-solution siblings on the ncg
+   graph seam — an organization's gathering procedure as ordered
+   collection/submission/validation/transformation steps, compiled
+   to an executable SolutionDefinition (validation steps gate like
+   fork criteria); StepCredibilityAssertions record that specific
+   steps ADD or SUBTRACT credibility with REQUIRED reasons (votable
+   via scr-6); logically-equivalent terms' gathering procedures are
+   comparable side-by-side with no auto-declared winner.
+4. **Term Competition** (the PSC termcompetition Java draft, finally
+   built in Polari): group-proposed composite/computed terms from
+   SPECIFIC CITED SOURCES (uncited refused); TermRelationAssertions
+   (logical-equivalent / purpose-equivalent / logical-subset /
+   logically-exclusive-competing) that, once confirmed, materialize
+   into ScoreTerm's long-dormant equivalent_terms_json /
+   competitive_terms_json; context-fit validation (topic/geography/
+   timeframe closest-match vs the score's scope); scope-eligibility
+   votes (which terms even meet criteria for consideration), then
+   legitimacy ELECTIONS riding the existing WorldviewElection
+   machinery — per-group AND global scales; winners mark 'elected'
+   and concept-weight changes come back as suggestions, never
+   auto-applied.
+
+## Democratic term proofs (Dustin 2026-07-16, follow-up to Term
+Competition — build queued behind the term-competition fork)
+
+Proofs established DEMOCRATICALLY over the term system's claims:
+1. **Sufficiency**: what is sufficient to meet the requirements of
+   being a term for a context — the CRITERIA THEMSELVES are votable
+   rows (mechanism-C idiom: criteria compete, elections resolve
+   which admission criteria are in force per context kind).
+2. **Robustness**: what establishes one term as more robust than
+   another — a structured demonstration, not a bare claim.
+3. **Subset**: establishing one term as a logical subset of another
+   (backing the 'logical-subset' relation assertions with proof).
+4. **Misleading contextualization**: one term is MORE ACCURATE to
+   the context — canonical worked example (Dustin's): a national
+   AVERAGE of race competitiveness can hide that close to a majority
+   of political races are UNCONTESTED; set against a per-state
+   uncontested-share accountability term, the side-by-side
+   demonstration makes the masking visible, and "given the option
+   most people would say it is more appropriate" — so the proof IS
+   the side-by-side comparison over the same underlying data
+   (aggregation-masking demonstrations: summary statistic vs the
+   distribution feature it conceals), and the verdict is a VOTE.
+Proof acceptance: group + individual voting units (the credibility
+precedent — groups count once, latest stance per unit, bounded
+readings); accepted proofs BACK the corresponding scope-eligibility,
+relation-materialization, and election actions — proofs are the
+evidence layer under the competition's democracy, never auto-applied
+conclusions.
+
+### Data-manipulation scenario catalog (Dustin 2026-07-16, extends
+the democratic-proofs design)
+
+Misleading-term justification has recognizable SHAPES — catalog them
+as votable DataManipulationPattern rows (the VenueMismatchPattern
+idiom applied to statistics), each with: what it looks like, the
+counter-presentation that exposes it, and a COMPUTABLE exposure
+check over ContextualizedValues where feasible:
+- aggregation-masking (the canonical uncontested-races example:
+  check = summary statistic vs distribution mass it conceals),
+- cherry-picked timeframe (check = window sensitivity: does the
+  claim invert under adjacent windows),
+- cherry-picked geography/subgroup (check = coverage vs the
+  context's declared scope),
+- denominator switching (per-capita vs absolute chosen to flatter),
+- Simpson's-paradox exploitation (check = aggregate-vs-subgroup
+  trend reversal),
+- outlier-driven means (check = mean-vs-median divergence),
+- threshold gaming (a generous definition of e.g. 'competitive'),
+- conflated proxy (term measures X, presented as Y),
+- stale vintage presented as current (check = value timeframe vs
+  score timeframe).
+Checks produce NEUTRAL findings ('the mean and median diverge by X;
+the distribution carries mass the average conceals') — the verdict
+that a presentation is misleading is DEMOCRATIC (proof votes), never
+the detector's.
+
+### Proof-concept extensions + debate data needs (design pass,
+2026-07-16 — folded into the queued proofs build)
+
+**Extensions to the proof concept:**
+1. **Rebuttals** — a proof must be answerable: structured
+   counter-proof objects challenging (a) the demonstration's DATA,
+   (b) its FRAMING, or (c) its GENERALITY (works here, not there).
+   Debate = proof ↔ rebuttal chains, each node votable; a proof with
+   unanswered standing rebuttals reads differently from an
+   unchallenged one (the reading says so).
+2. **Proof dependencies + staleness** — proofs may rest on accepted
+   upstream proofs (a subset proof presumes both terms' sufficiency
+   proofs). Dependency edges are recorded; when an upstream proof is
+   later rejected or superseded, every downstream proof flips to
+   'stale — foundation changed' (visible, never silently kept).
+3. **Re-runnable demonstrations** — the strongest proof form: the
+   demonstration's steps are DATA (which values, which computation),
+   executable on the graph seam like DataGatheringSolutions, so any
+   group can re-run it on their own instance (this is the
+   cross-validation idiom applied to arguments: confirmations of a
+   demonstration raise its standing).
+4. **Comprehension votes vs validity votes** — Dustin's 'most people
+   would say it is more appropriate' is a DISTINCT vote kind:
+   validity ('is the demonstration correct') is one question;
+   comprehension ('shown both presentations, which gives you the
+   more accurate impression of reality') is another. Both are
+   collected, never conflated — a proof can be technically valid
+   AND fail comprehension, or vice versa, and that tension is
+   information.
+5. **Proof scope** — acceptance is per context scope (a proof
+   accepted for state-level comparison is not silently national);
+   proofs carry the same context vocabulary as terms.
+6. **Lifecycle** — draft → demonstrated → challenged → accepted |
+   rejected | stale, append-only history (the assertions idiom).
+
+**Manipulation catalog additions** (beyond the first nine):
+- uncertainty suppression (point estimates where the margin of error
+  swamps the claimed difference — check: claimed delta vs MOE),
+- base-rate neglect ('doubled' from 1 to 2 — check: percent change
+  presented without the absolute base),
+- cumulative-vs-annual conflation (check: period-length mismatch),
+- seasonal/calendar gaming (check: same-period-prior-year
+  comparison divergence),
+- percent vs percentage-point confusion (computable from context),
+- composition-shift masking (a rate 'improves' because the mix
+  changed — check: decomposition when subgroup values exist),
+- survivorship filtering (exited entities dropped from trends —
+  check: panel coverage vs the context's entity roster),
+- goalpost redefinition (the term's DEFINITION changed mid-series —
+  check: definition-version metadata discontinuity),
+- correlation-presented-as-causation (assertable with rationale;
+  not computable — honestly flagged as judgment-only).
+
+**Data the debates need (model gaps to close, each its own careful
+change):**
+1. **Distribution alongside summary**: aggregation-masking proofs
+   need the underlying values (per-state rows, not just the national
+   mean) + ROLLUP LINEAGE — a derived/aggregate ContextualizedValue
+   should name its input values so the concealment is recomputable.
+2. **Uncertainty fields**: margin-of-error / CI / sample size on
+   values — ACS PUBLISHES MOEs and we currently drop them at
+   ingestion (dmvdata census_pull should carry them once the field
+   exists). Core-schema change to ContextualizedValue: handle with
+   schema-stabilization care.
+3. **Definition/methodology versioning**: values reference the
+   version of the term definition AND the DataGatheringSolution
+   version that produced them (goalpost detection = version
+   discontinuity mid-series; the gathering solution IS the
+   methodology record).
+4. **Comparability metadata**: seasonal-adjustment flags,
+   denominators (per-capita bases), deflator/nominal-real markers.
+5. **Usage records**: WHO applied term X to context Y in public
+   (bridges scr-15 FactualClaim — misleading-USE assertions attach
+   to actual usages by actual outlets/actors, not hypotheticals;
+   an outlet's repeated flagged usages feed its accuracy score).
+
+### Credibility bases (Dustin 2026-07-16 — fork build in flight)
+
+Distinct credibility KINDS, relevant per context: professional
+(credentialed, per-domain — an economist's basis does not cover
+epidemiology), impact (lived experience of the issue — the person
+who can assert why a logically-valid proof does not hold up in
+reality), methodological (the independent mathematician on the
+math), institutional, independent-review. CredibilityClaim rows
+carry evidence, ATTESTATIONS by others (unit-keyed; independence is
+an attestable ABSENCE claim — 'proven to not have background related
+to it'), and MANDATORY-VISIBLE affiliations/conflicts (the
+company-employed scientist's stance always reads 'professional
+(employed by X)'). Stances/rebuttals/votes cite which claim they
+speak from via linking rows (never editing the landed classes);
+readings break down BY basis kind and NEVER collapse kinds into one
+number — professional consensus, impacted-community experience, and
+independent methodological critique are different information, and
+flattening them is exactly the aggregation-masking the proofs system
+exposes. Participation is never gated on credentials (unattributed
+stances read 'unattributed', not hidden). Dustin's three-actor
+scenario (impacted resident vs company scientist vs independent
+mathematician proposing a competing term) is the selftest fixture.
+
+#### Qualification relevance voting (Dustin 2026-07-16, folded into
+the credibility-bases build)
+
+People vote on WHICH qualification kinds/qualifiers (professional
+disciplines, LOCALITY-based — resident-of/operates-in a geography,
+tied to the geography context vocabulary — and impact-based) are
+RELEVANT per context, so relevant-qualified inputs surface with
+priority "without being drowned out." Relevance readings rank kinds
+by distinct-unit support; prioritized stance readings ORDER basis
+groups by that ranking. Anti-drowning is ORDERING, never exclusion —
+a stance never vanishes because its qualification wasn't voted
+relevant (pinned), and unattributed stances still appear. Relevance
+votes are unit-keyed (groups count once) like every other vote in
+the stack.
